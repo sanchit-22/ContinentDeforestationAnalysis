@@ -1,0 +1,27 @@
+# Python caches and virtual environment
+__pycache__/
+myenv/
+*.pyc
+
+# Heavy Spatial Data & Rasters
+*.tif
+*.tif.aux.xml
+*.shp
+*.shx
+*.dbf
+*.prj
+*.gpkg
+
+# Raw Data and Dump Folders
+dump/
+ESA/
+Hansen/
+GADM/
+DatasetGQIS.qgz
+Findings/
+
+# Processed heavy tiles (optional, but recommended to prevent pushing 20,000+ PNGs)
+data/processed/map_tiles/
+
+# OS files
+.DS_Store
