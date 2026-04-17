@@ -1,28 +1,24 @@
-# app.py
-"""
-Streamlit Interactive Dashboard — Andaman Forest Fragmentation
-Run: streamlit run app.py
-"""
+import re
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import altair as alt
-import os
-from streamlit_folium import st_folium
-from map_component import build_island_map, LAYER_META
+with open("app.py", "r", encoding="utf-8") as f:
+    app_text = f.read()
 
-st.set_page_config(page_title="Andaman Forest Fragmentation", layout="wide")
-st.title("🌿 Andaman & Nicobar — Forest Fragmentation Explorer")
-st.caption("Data: Hansen GFC 2000–2023 | ESA WorldCover 2021 | Metrics: pylandstats")
+# Add altair import
+app_text = app_text.replace("import matplotlib.pyplot as plt", "import matplotlib.pyplot as plt\nimport altair as alt")
 
-@st.cache_data
+# 1. Update load_data to add group_name
+load_data_orig = """@st.cache_data
 def load_data():
     df  = pd.read_csv("results/tables/novel_metrics.csv")
     meta = pd.read_csv("data/processed/island_metadata.csv")
-    df["group_name"] = df["island_name"].str.replace(r"_\d+$", "", regex=True)
-    meta["group_name"] = meta["island_name"].str.replace(r"_\d+$", "", regex=True)
+    return df, meta"""
+
+load_data_new = """@st.cache_data
+def load_data():
+    df  = pd.read_csv("results/tables/novel_metrics.csv")
+    meta = pd.read_csv("data/processed/island_metadata.csv")
+    df["group_name"] = df["island_name"].str.replace(r"_\\d+$", "", regex=True)
+    meta["group_name"] = meta["island_name"].str.replace(r"_\\d+$", "", regex=True)
     return df, meta
 
 def weighted_mean(values: pd.Series, weights: pd.Series) -> float:
@@ -59,11 +55,26 @@ def aggregate_group_timeseries(group_df: pd.DataFrame, group_meta: pd.DataFrame)
             "TA_ha": ta_sum, "PLAND": pland, "PD": pd_w, "ED": ed_w, "TCA_ha": tca_sum,
             "ENN_MN_m": enn_w, "n_patches": int(ydf["n_patches"].fillna(0).sum()),
             "FI": fi, "CRR": crr, "IWFI": iwfi, "cumulative_loss_pct": ydf["cumulative_loss_pct"].mean()}) # roughly aggregate loss
-    return pd.DataFrame(records)
+    return pd.DataFrame(records)"""
+app_text = app_text.replace(load_data_orig, load_data_new)
 
-df, meta = load_data()
+# 2. Update Sidebar to add view level
+sidebar_orig = """# ── Sidebar ───────────────────────────────────────────────────────────────────
+st.sidebar.header("🗺️ Controls")
+islands  = sorted(df["island_name"].dropna().unique())
+selected = st.sidebar.selectbox("Select Island", islands)
+year_range = st.sidebar.slider("Year Range", 2000, 2023, (2000, 2023))
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+island_df = df[
+    (df["island_name"] == selected) &
+    (df["year"].between(*year_range))
+].sort_values("year")
+
+# ── Key Statistics ─────────────────────────────────────────────────────────────
+col1, col2, col3, col4 = st.columns(4)
+irow = meta[meta["island_name"] == selected]"""
+
+sidebar_new = """# ── Sidebar ───────────────────────────────────────────────────────────────────
 st.sidebar.header("🗺️ Controls")
 
 view_level = st.sidebar.radio("View Level", ["Individual island", "Aggregate island group"])
@@ -93,67 +104,23 @@ else:
     selected = f"{group_display.get(selected, selected)} (aggregate)"
 
 # ── Key Statistics ─────────────────────────────────────────────────────────────
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4 = st.columns(4)"""
+app_text = app_text.replace(sidebar_orig, sidebar_new)
 
-with col1:
+# 3. Fix area_label in metrics
+stats_orig = """with col1:
     area = irow["area_km2"].values[0] if len(irow) else "N/A"
-    st.metric(area_label, f"{area:.1f} km²" if area != "N/A" and pd.notna(area) else "N/A")
-with col2:
-    dist = irow["dist_mainland_km"].values[0] if len(irow) else "N/A"
-    st.metric("Distance to Mainland", f"{dist:.0f} km" if dist != "N/A" else dist)
-with col3:
-    latest_crr = island_df["CRR"].dropna().iloc[-1] if not island_df["CRR"].dropna().empty else np.nan
-    st.metric("Latest CRR", f"{latest_crr:.3f}" if not np.isnan(latest_crr) else "N/A",
-              help="Core Retention Ratio — 1.0=no edge effect, 0=all edge")
-with col4:
-    latest_loss = island_df["cumulative_loss_pct"].dropna().iloc[-1] if not island_df.empty else np.nan
-    st.metric("Cumulative Loss", f"{latest_loss:.5f}%" if not np.isnan(latest_loss) else "N/A")
+    st.metric("Island Area", f"{area:.1f} km²" if area != "N/A" else area)"""
 
-# ── Charts ────────────────────────────────────────────────────────────────────
-tab_charts, tab_map = st.tabs(["📊 Metric Charts", "🗺️ Interactive Map"])
+stats_new = """with col1:
+    area = irow["area_km2"].values[0] if len(irow) else "N/A"
+    st.metric(area_label, f"{area:.1f} km²" if area != "N/A" and pd.notna(area) else "N/A")"""
+app_text = app_text.replace(stats_orig, stats_new)
 
-with tab_charts:
-    c1, c2 = st.columns(2)
+# 4. Insert inference logic before full table
+table_orig = """    # ── Raw data table ────────────────────────────────────────────────────────────"""
 
-    with c1:
-        st.subheader("Core Retention Ratio (CRR) Over Time")
-        fig, ax = plt.subplots(figsize=(6, 3))
-        ax.plot(island_df["year"], island_df["CRR"], marker="o", color="#2ecc71",
-                markersize=4, linewidth=1.8)
-        ax.axhline(0.5, linestyle="--", color="red", linewidth=1, alpha=0.7,
-                   label="CRR = 0.5 (critical threshold)")
-        ax.set_ylim(0, 1.05)
-        ax.set_xlabel("Year")
-        ax.set_ylabel("CRR")
-        ax.legend(fontsize=8)
-        ax.grid(True, alpha=0.3)
-        st.pyplot(fig)
-        plt.close(fig)
-
-    with c2:
-        st.subheader("Fragmentation Index (FI) Over Time")
-        fig2, ax2 = plt.subplots(figsize=(6, 3))
-        ax2.bar(island_df["year"], island_df["FI"].fillna(0),
-                color="#e74c3c", alpha=0.75, width=0.7)
-        ax2.set_xlabel("Year")
-        ax2.set_ylabel("FI = ED × PD / PLAND")
-        ax2.grid(True, alpha=0.3, axis="y")
-        st.pyplot(fig2)
-        plt.close(fig2)
-
-    # ── IWFI trajectory ───────────────────────────────────────────────────────────
-    st.subheader("Isolation-Weighted Fragmentation Index (IWFI)")
-    fig3, ax3 = plt.subplots(figsize=(10, 3))
-    ax3.fill_between(island_df["year"], island_df["IWFI"].fillna(0),
-                     alpha=0.45, color="#9b59b6")
-    ax3.plot(island_df["year"], island_df["IWFI"].fillna(0), color="#9b59b6", linewidth=1.5)
-    ax3.set_xlabel("Year")
-    ax3.set_ylabel("IWFI")
-    ax3.grid(True, alpha=0.3)
-    st.pyplot(fig3)
-    plt.close(fig3)
-
-    # ── Inference Plot: Threshold Breach Timeline ───────────────────────────────
+table_new = """    # ── Inference Plot: Threshold Breach Timeline ───────────────────────────────
     st.subheader("Threshold Breach Timeline & Quick Inferences")
     infer_df = island_df[["year", "CRR", "FI", "cumulative_loss_pct"]].copy()
     infer_df = infer_df.dropna(subset=["year"]).copy()
@@ -219,78 +186,9 @@ with tab_charts:
         st.write(f"- FI shock years (top 10% in selected range): {spike_text}")
         st.write(f"- Years with 2+ active risk signals: {high_risk_text}")
 
-    # ── Raw data table ────────────────────────────────────────────────────────────
-    with st.expander("📋 Full Data Table"):
-        st.dataframe(island_df.set_index("year").round(4))
+    # ── Raw data table ────────────────────────────────────────────────────────────"""
 
-with tab_map:
-    # Use selected and year_range instead of selected_island/selected_year
-    selected_island_key = selected.lower().replace(" ", "_").replace(".", "").replace(",", "")
-    selected_year = year_range[1]  # Using upper bound of slider as the selected map year
+app_text = app_text.replace(table_orig, table_new)
 
-    st.markdown(
-        f"**Showing:** `{selected}` &nbsp;|&nbsp; **Year:** `{selected_year}`"
-    )
-
-    # Layer selector — presented as radio buttons so only one layer is active
-    layer_options = {v["label"]: k for k, v in LAYER_META.items()}
-    active_label  = st.radio(
-        "Map Layer",
-        options=list(layer_options.keys()),
-        index=0,
-        horizontal=True,
-        help=(
-            "🌲 Forest Cover — binary forest in selected year\n\n"
-            "🔴 Cumulative Deforestation — all loss events up to selected year\n\n"
-            "🟠 Annual Loss Events — loss that occurred only in selected year\n\n"
-            "🗺️ ESA Land Cover — multi-class 2021 land cover snapshot"
-        ),
-    )
-    active_layer = layer_options[active_label]
-
-    if active_layer == "esa_landcover":
-        st.caption(
-            "ℹ️ ESA WorldCover is a 2021 snapshot and does not change with the year slider."
-        )
-
-    if view_level == "Individual island":
-        selected_island_keys = selected.lower().replace(" ", "_").replace(".", "").replace(",", "")
-        string_key = selected_island_keys
-    else:
-        # group_meta contains all the islands for the selected group
-        raw_names = group_meta["island_name"].dropna().unique().tolist()
-        selected_island_keys = [n.lower().replace(" ", "_").replace(".", "").replace(",", "") for n in raw_names]
-        # Just a unique string for the folium key
-        string_key = "aggregate_" + "_".join(selected_island_keys[:3])
-
-    with st.spinner("Rendering map…"):
-        fmap = build_island_map(
-            selected_island=selected_island_keys,
-            selected_year=selected_year,
-            active_layer=active_layer,
-        )
-
-    map_data = st_folium(
-        fmap,
-        use_container_width=True,
-        height=540,
-        returned_objects=[],
-        key=f"map_{string_key}_{selected_year}_{active_layer}",
-    )
-
-    LAYER_DESCRIPTIONS = {
-        "forest_cover": "Binary forest cover derived from the Hansen GFC forest mask. Green pixels are classified as forested (≥ 30% canopy cover) in the selected year.",
-        "deforestation_cumulative": "Cumulative tree cover loss from 2001 up to the selected year. Darker red indicates earlier loss; brighter red indicates more recent events.",
-        "annual_loss": "Loss events that occurred specifically in the selected year. Orange pixels represent newly deforested areas in that single calendar year. Not available for year 2000 (baseline).",
-        "esa_landcover": "ESA WorldCover 2021 land classification. This is a static snapshot and does not respond to the year slider."
-    }
-    st.info(LAYER_DESCRIPTIONS.get(active_layer, ""))
-
-    st.caption(
-        "Map: Folium / Leaflet.js | Raster: Hansen GFC, ESA WorldCover | "
-        "Boundaries: GADM | CRS: EPSG:4326 (display)"
-    )
-
-st.markdown("---")
-st.caption("Built with Streamlit | Data: Hansen GFC, ESA WorldCover, GADM | "
-           "Metrics: pylandstats | CRS: EPSG:32646 (UTM 46N)")
+with open("app.py", "w", encoding="utf-8") as f:
+    f.write(app_text)
