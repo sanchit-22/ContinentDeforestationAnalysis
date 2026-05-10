@@ -110,120 +110,113 @@ with col4:
     st.metric("Cumulative Loss", f"{latest_loss:.5f}%" if not np.isnan(latest_loss) else "N/A")
 
 # ── Charts ────────────────────────────────────────────────────────────────────
-tab_charts, tab_map = st.tabs(["📊 Metric Charts", "🗺️ Interactive Map"])
+c1, c2 = st.columns(2)
 
-with tab_charts:
-    c1, c2 = st.columns(2)
+with c1:
+    st.subheader("Core Retention Ratio (CRR) Over Time")
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.plot(island_df["year"], island_df["CRR"], marker="o", color="#2ecc71",
+            markersize=4, linewidth=1.8)
+    ax.axhline(0.5, linestyle="--", color="red", linewidth=1, alpha=0.7,
+               label="CRR = 0.5 (critical threshold)")
+    ax.set_ylim(0, 1.05)
+    ax.set_xlabel("Year")
+    ax.set_ylabel("CRR")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    st.pyplot(fig)
+    plt.close(fig)
 
-    with c1:
-        st.subheader("Core Retention Ratio (CRR) Over Time")
-        fig, ax = plt.subplots(figsize=(6, 3))
-        ax.plot(island_df["year"], island_df["CRR"], marker="o", color="#2ecc71",
-                markersize=4, linewidth=1.8)
-        ax.axhline(0.5, linestyle="--", color="red", linewidth=1, alpha=0.7,
-                   label="CRR = 0.5 (critical threshold)")
-        ax.set_ylim(0, 1.05)
-        ax.set_xlabel("Year")
-        ax.set_ylabel("CRR")
-        ax.legend(fontsize=8)
-        ax.grid(True, alpha=0.3)
-        st.pyplot(fig)
-        plt.close(fig)
+with c2:
+    st.subheader("Fragmentation Index (FI) Over Time")
+    fig2, ax2 = plt.subplots(figsize=(6, 3))
+    ax2.bar(island_df["year"], island_df["FI"].fillna(0),
+            color="#e74c3c", alpha=0.75, width=0.7)
+    ax2.set_xlabel("Year")
+    ax2.set_ylabel("FI = ED × PD / PLAND")
+    ax2.grid(True, alpha=0.3, axis="y")
+    st.pyplot(fig2)
+    plt.close(fig2)
 
-    with c2:
-        st.subheader("Fragmentation Index (FI) Over Time")
-        fig2, ax2 = plt.subplots(figsize=(6, 3))
-        ax2.bar(island_df["year"], island_df["FI"].fillna(0),
-                color="#e74c3c", alpha=0.75, width=0.7)
-        ax2.set_xlabel("Year")
-        ax2.set_ylabel("FI = ED × PD / PLAND")
-        ax2.grid(True, alpha=0.3, axis="y")
-        st.pyplot(fig2)
-        plt.close(fig2)
+# ── IWFI trajectory ───────────────────────────────────────────────────────────
+st.subheader("Isolation-Weighted Fragmentation Index (IWFI)")
+fig3, ax3 = plt.subplots(figsize=(10, 3))
+ax3.fill_between(island_df["year"], island_df["IWFI"].fillna(0),
+                 alpha=0.45, color="#9b59b6")
+ax3.plot(island_df["year"], island_df["IWFI"].fillna(0), color="#9b59b6", linewidth=1.5)
+ax3.set_xlabel("Year")
+ax3.set_ylabel("IWFI")
+ax3.grid(True, alpha=0.3)
+st.pyplot(fig3)
+plt.close(fig3)
 
-    # ── IWFI trajectory ───────────────────────────────────────────────────────────
-    st.subheader("Isolation-Weighted Fragmentation Index (IWFI)")
-    fig3, ax3 = plt.subplots(figsize=(10, 3))
-    ax3.fill_between(island_df["year"], island_df["IWFI"].fillna(0),
-                     alpha=0.45, color="#9b59b6")
-    ax3.plot(island_df["year"], island_df["IWFI"].fillna(0), color="#9b59b6", linewidth=1.5)
-    ax3.set_xlabel("Year")
-    ax3.set_ylabel("IWFI")
-    ax3.grid(True, alpha=0.3)
-    st.pyplot(fig3)
-    plt.close(fig3)
+# ── Raw data table ────────────────────────────────────────────────────────────
+with st.expander("📋 Full Data Table"):
+    st.dataframe(island_df.set_index("year").round(4))
 
-    # ── Raw data table ────────────────────────────────────────────────────────────
-    with st.expander("📋 Full Data Table"):
-        st.dataframe(island_df.set_index("year").round(4))
+# ── Interactive map directly below charts ─────────────────────────────────────
+selected_year = year_range[1]  # Use upper bound of slider as the selected map year
 
-with tab_map:
-    # Use selected and year_range instead of selected_island/selected_year
-    selected_island_key = selected.lower().replace(" ", "_").replace(".", "").replace(",", "")
-    selected_year = year_range[1]  # Using upper bound of slider as the selected map year
+st.markdown(f"**Interactive Map:** `{selected}` &nbsp;|&nbsp; **Year:** `{selected_year}`")
 
-    st.markdown(
-        f"**Showing:** `{selected}` &nbsp;|&nbsp; **Year:** `{selected_year}`"
-    )
+# Layer selector — presented as radio buttons so only one layer is active
+layer_options = {v["label"]: k for k, v in LAYER_META.items()}
+active_label  = st.radio(
+    "Map Layer",
+    options=list(layer_options.keys()),
+    index=0,
+    horizontal=True,
+    help=(
+        "🌲 Forest Cover — binary forest in selected year\n\n"
+        "🔴 Cumulative Deforestation — all loss events up to selected year\n\n"
+        "🟠 Annual Loss Events — loss that occurred only in selected year\n\n"
+        "🗺️ ESA Land Cover — multi-class 2021 land cover snapshot"
+    ),
+)
+active_layer = layer_options[active_label]
 
-    # Layer selector — presented as radio buttons so only one layer is active
-    layer_options = {v["label"]: k for k, v in LAYER_META.items()}
-    active_label  = st.radio(
-        "Map Layer",
-        options=list(layer_options.keys()),
-        index=0,
-        horizontal=True,
-        help=(
-            "🌲 Forest Cover — binary forest in selected year\n\n"
-            "🔴 Cumulative Deforestation — all loss events up to selected year\n\n"
-            "🟠 Annual Loss Events — loss that occurred only in selected year\n\n"
-            "🗺️ ESA Land Cover — multi-class 2021 land cover snapshot"
-        ),
-    )
-    active_layer = layer_options[active_label]
-
-    if active_layer == "esa_landcover":
-        st.caption(
-            "ℹ️ ESA WorldCover is a 2021 snapshot and does not change with the year slider."
-        )
-
-    if view_level == "Individual island":
-        selected_island_keys = selected.lower().replace(" ", "_").replace(".", "").replace(",", "")
-        string_key = selected_island_keys
-    else:
-        # group_meta contains all the islands for the selected group
-        raw_names = group_meta["island_name"].dropna().unique().tolist()
-        selected_island_keys = [n.lower().replace(" ", "_").replace(".", "").replace(",", "") for n in raw_names]
-        # Just a unique string for the folium key
-        string_key = "aggregate_" + "_".join(selected_island_keys[:3])
-
-    with st.spinner("Rendering map…"):
-        fmap = build_island_map(
-            selected_island=selected_island_keys,
-            selected_year=selected_year,
-            active_layer=active_layer,
-        )
-
-    map_data = st_folium(
-        fmap,
-        use_container_width=True,
-        height=540,
-        returned_objects=[],
-        key=f"map_{string_key}_{selected_year}_{active_layer}",
-    )
-
-    LAYER_DESCRIPTIONS = {
-        "forest_cover": "Binary forest cover derived from the Hansen GFC forest mask. Green pixels are classified as forested (≥ 30% canopy cover) in the selected year.",
-        "deforestation_cumulative": "Cumulative tree cover loss from 2001 up to the selected year. Darker red indicates earlier loss; brighter red indicates more recent events.",
-        "annual_loss": "Loss events that occurred specifically in the selected year. Orange pixels represent newly deforested areas in that single calendar year. Not available for year 2000 (baseline).",
-        "esa_landcover": "ESA WorldCover 2021 land classification. This is a static snapshot and does not respond to the year slider."
-    }
-    st.info(LAYER_DESCRIPTIONS.get(active_layer, ""))
-
+if active_layer == "esa_landcover":
     st.caption(
-        "Map: Folium / Leaflet.js | Raster: Hansen GFC, ESA WorldCover | "
-        "Boundaries: GADM | CRS: EPSG:4326 (display)"
+        "ℹ️ ESA WorldCover is a 2021 snapshot and does not change with the year slider."
     )
+
+if view_level == "Individual island":
+    selected_island_keys = selected.lower().replace(" ", "_").replace(".", "").replace(",", "")
+    string_key = selected_island_keys
+else:
+    # group_meta contains all the islands for the selected group
+    raw_names = group_meta["island_name"].dropna().unique().tolist()
+    selected_island_keys = [n.lower().replace(" ", "_").replace(".", "").replace(",", "") for n in raw_names]
+    # Just a unique string for the folium key
+    string_key = "aggregate_" + "_".join(selected_island_keys[:3])
+
+with st.spinner("Rendering map…"):
+    fmap = build_island_map(
+        selected_island=selected_island_keys,
+        selected_year=selected_year,
+        active_layer=active_layer,
+    )
+
+map_data = st_folium(
+    fmap,
+    use_container_width=True,
+    height=540,
+    returned_objects=[],
+    key=f"map_{string_key}_{selected_year}_{active_layer}",
+)
+
+LAYER_DESCRIPTIONS = {
+    "forest_cover": "Binary forest cover derived from the Hansen GFC forest mask. Green pixels are classified as forested (≥ 30% canopy cover) in the selected year.",
+    "deforestation_cumulative": "Cumulative tree cover loss from 2001 up to the selected year. Darker red indicates earlier loss; brighter red indicates more recent events.",
+    "annual_loss": "Loss events that occurred specifically in the selected year. Orange pixels represent newly deforested areas in that single calendar year. Not available for year 2000 (baseline).",
+    "esa_landcover": "ESA WorldCover 2021 land classification. This is a static snapshot and does not respond to the year slider."
+}
+st.info(LAYER_DESCRIPTIONS.get(active_layer, ""))
+
+st.caption(
+    "Map: Folium / Leaflet.js | Raster: Hansen GFC, ESA WorldCover | "
+    "Boundaries: GADM | CRS: EPSG:4326 (display)"
+)
 
 st.markdown("---")
 st.caption("Built with Streamlit | Data: Hansen GFC, ESA WorldCover, GADM | "

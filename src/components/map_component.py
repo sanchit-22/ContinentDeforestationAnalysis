@@ -102,6 +102,14 @@ def _load_bounds(island_key: str) -> dict | None:
 def _tile_path(island_key: str, year: int, layer: str) -> str:
     return os.path.join(TILE_DIR, island_key, str(year), f"{layer}.png")
 
+def _short_island_label(island_key: str) -> str:
+    """Return a compact label for Leaflet controls, e.g. north_and_middle_andaman_30 -> island-30."""
+    island_key = str(island_key)
+    suffix = island_key.rsplit("_", 1)[-1]
+    if suffix.isdigit():
+        return f"island-{suffix}"
+    return island_key.replace("_", "-")
+
 def _add_legend(fmap: folium.Map, layer: str) -> None:
     """Inject a floating HTML legend into the map."""
     meta = LAYER_META.get(layer, {})
@@ -219,31 +227,35 @@ def build_island_map(
 
     # ── 4. Island boundary GeoJSON overlay ───────────────────────────────────
     if all_islands_gdf is not None:
+        # Filter to show ONLY the selected island(s), hiding all other sub-islands
+        selected_gdf = all_islands_gdf[all_islands_gdf["island_key"].isin(islands_list)]
+        
         def get_island_style(feature):
-            is_selected = feature["properties"]["island_key"] in islands_list
             return {
-                "fillColor":   "#2ecc71" if is_selected else "#95a5a6",
-                "color":       "#27ae60" if is_selected else "#7f8c8d",
-                "weight":      2.5       if is_selected else 0.8,
-                "fillOpacity": 0.12      if is_selected else 0.05,
-                "opacity":     1.0       if is_selected else 0.5,
+                "fillColor":   "#2ecc71",
+                "color":       "#27ae60",
+                "weight":      2.5,
+                "fillOpacity": 0.12,
+                "opacity":     1.0,
             }
 
         def island_highlight(feature):
             return {"weight": 3, "color": "#1abc9c", "fillOpacity": 0.25}
 
-        folium.GeoJson(
-            all_islands_gdf.__geo_interface__,
-            name="Island Boundaries",
-            style_function=get_island_style,
-            highlight_function=island_highlight,
-            tooltip=folium.GeoJsonTooltip(
-                fields=["island_name"],
-                aliases=["Island:"],
-                sticky=False,
-                style="font-family:sans-serif;font-size:13px;",
-            ),
-        ).add_to(fmap)
+        # Only add to map if there's actually a selected geometry found
+        if not selected_gdf.empty:
+            folium.GeoJson(
+                selected_gdf.__geo_interface__,
+                name="Island Boundary",
+                style_function=get_island_style,
+                highlight_function=island_highlight,
+                tooltip=folium.GeoJsonTooltip(
+                    fields=["island_name"],
+                    aliases=["Island:"],
+                    sticky=False,
+                    style="font-family:sans-serif;font-size:13px;",
+                ),
+            ).add_to(fmap)
 
     # ── 5. Raster data layer (active_layer only, for selected islands×year) ───
     meta = LAYER_META.get(active_layer, {})
@@ -258,7 +270,7 @@ def build_island_map(
             folium.raster_layers.ImageOverlay(
                 image=data_uri,
                 bounds=[[b["south"], b["west"]], [b["north"], b["east"]]],
-                name=f"{meta.get('label', active_layer)} - {island_key}",
+                name=_short_island_label(island_key),
                 opacity=meta.get("opacity", 0.75),
                 cross_origin=False,
                 zindex=10,
