@@ -2,11 +2,13 @@
 
 ## Project Files
 
+- Deployed Interactive Dashboard: [Streamlit app](https://andaman-nicobar-forest-analysis.streamlit.app/)
 - Report: [Google Docs report](https://docs.google.com/document/d/1zPnZTx9h78Jlbt79VzU9hp__fUk7Q3CgDkqFYH1S2zE/edit?usp=sharing)
 - PPT / Presentation: [Google Slides presentation](https://docs.google.com/presentation/d/1T3UJoA6qCc2lIdNZkaaowH5wFWF0mDHDUg2WCI3QEHw/edit?usp=sharing)
 
-The report and presentation are hosted on Google Drive so they can be opened
-directly from GitHub or any Markdown preview.
+The dashboard is deployed on Streamlit Community Cloud. The report and
+presentation are hosted on Google Drive so they can be opened directly from
+GitHub or any Markdown preview.
 
 ## Overview
 
