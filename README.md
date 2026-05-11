@@ -153,5 +153,3 @@ python scripts/99_final_check.py
 
 - The main dashboard file is `app.py`.
 - The interactive map code is in `src/components/map_component.py`.
-- For a detailed explanation of the metrics and map implementation, read
-  [explain.md](./explain.md).
